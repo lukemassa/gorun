@@ -2,5 +2,4 @@
 - Split client and server code into different packages
 - Respect env variable to override default socket
 - Build on server hit
-- e2e test
 - Better socket address

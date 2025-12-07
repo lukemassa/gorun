@@ -3,7 +3,9 @@ package e2e
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,37 +43,76 @@ type RunResult struct {
 	Code   int
 }
 
-func runCLI(args ...string) (RunResult, error) {
+// runCLI runs the CLI with the args, in a directory with the files from fsys
+// If the command times out, the code is set to -1
+func runCLI(t *testing.T, fsys fs.FS, args ...string) RunResult {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, cliPath, args...)
 
+	workingDir := t.TempDir()
+
+	writeFS(t, fsys, workingDir)
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	cmd.Dir = workingDir
 
 	err := cmd.Run()
 
 	code := 0
 	if err != nil {
-		ee, ok := err.(*exec.ExitError)
-		if !ok {
-			// non-process error: timeout, context canceled, etc.
-			return RunResult{}, fmt.Errorf("failed to run with args: '%v': %v", args, err)
+		if ee, ok := err.(*exec.ExitError); ok {
+			code = ee.ExitCode()
+		} else if errors.Is(err, context.DeadlineExceeded) {
+			code = -1
+		} else {
+			// test harness failure
+			t.Fatalf("failed to run with args %v: %v", args, err)
 		}
-		code = ee.ExitCode()
 	}
 
 	return RunResult{
 		Stdout: stdout.String(),
 		Stderr: stderr.String(),
 		Code:   code,
-	}, nil
+	}
+}
+
+func writeFS(t *testing.T, src fs.FS, dst string) {
+	t.Helper()
+	if src == nil {
+		return
+	}
+
+	err := fs.WalkDir(src, ".", func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		full := filepath.Join(dst, path)
+
+		if d.IsDir() {
+			return os.MkdirAll(full, 0o755)
+		}
+
+		data, err := fs.ReadFile(src, path)
+		if err != nil {
+			return err
+		}
+
+		return os.WriteFile(full, data, 0o644)
+	})
+
+	if err != nil {
+		t.Fatalf("WriteFS failed populating %q: %v", dst, err)
+	}
 }
 
 func TestRun(t *testing.T) {
-	result, err := runCLI("hello")
-	assert.NoError(t, err)
+	result := runCLI(t, nil, "hello")
 
 	assert.Equal(t, "hello\n", result.Stdout)
 	assert.Equal(t, 0, result.Code)

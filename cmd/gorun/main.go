@@ -10,7 +10,11 @@ import (
 )
 
 func main() {
-	client := client.NewClient(server.DefaultSock)
+	sock := os.Getenv("GORUN_SOCKET")
+	if sock == "" {
+		sock = server.DefaultSock
+	}
+	client := client.NewClient(sock)
 
 	env := os.Environ()
 

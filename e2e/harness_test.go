@@ -11,9 +11,14 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/lukemassa/gorun/internal/server"
 )
 
-var cliPath string
+var (
+	cliPath    string
+	socketPath string
+)
 
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "gorun-test-e2e-*")
@@ -32,7 +37,17 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	os.Exit(m.Run())
+	socketPath = filepath.Join(dir, "socket")
+	server := server.NewServer(socketPath)
+	cancel, err := server.Start()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to startz test server: %s\n%s", err, out)
+		os.Exit(1)
+	}
+
+	estatus := m.Run()
+	cancel()
+	os.Exit(estatus)
 }
 
 type RunResult struct {
@@ -57,6 +72,7 @@ func runCLI(t *testing.T, fsys fs.FS, args ...string) RunResult {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	cmd.Dir = workingDir
+	cmd.Env = append(cmd.Env, fmt.Sprintf("GORUN_SOCKET=%s", socketPath))
 
 	err := cmd.Run()
 

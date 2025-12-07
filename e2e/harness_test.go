@@ -16,14 +16,14 @@ import (
 var cliPath string
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "mycli-e2e-*")
+	dir, err := os.MkdirTemp("", "gorun-test-e2e-*")
 	if err != nil {
 		panic(err)
 	}
 	// you must clean it up manually afterwards
 	defer os.RemoveAll(dir)
 
-	cliPath = filepath.Join(dir, "gorun-test-binary")
+	cliPath = filepath.Join(dir, "cmd")
 	cmd := exec.Command("go", "build", "-o", cliPath, "github.com/lukemassa/gorun/cmd/gorun")
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0") // optional but hermetic
 	out, err := cmd.CombinedOutput()

@@ -33,7 +33,7 @@ func NewClient(sock string) *Client {
 	}
 }
 
-func (c *Client) GetBinary(cmd string, env []string) (string, error) {
+func (c *Client) GetCommand(cmd string, env []string) (string, error) {
 
 	requestContent := commandRequest{
 		Cmd: cmd,
@@ -45,7 +45,7 @@ func (c *Client) GetBinary(cmd string, env []string) (string, error) {
 	}
 
 	// URL host is ignored — must be syntactically valid, but irrelevant.
-	req, err := http.NewRequest("POST", "http://unix/binary", bytes.NewReader(b))
+	req, err := http.NewRequest("POST", "http://unix/command", bytes.NewReader(b))
 	if err != nil {
 		return "", err
 	}

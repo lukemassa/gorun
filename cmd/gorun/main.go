@@ -21,18 +21,18 @@ func main() {
 	initialCmd := os.Args[0]
 	initialArgs := os.Args[1:]
 
-	binary, err := client.GetBinary(initialCmd, env)
+	newCommand, err := client.GetCommand(initialCmd, env)
 	// URL host is ignored — must be syntactically valid, but irrelevant.
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	args := []string{binary}
+	args := []string{newCommand}
 	args = append(args, initialArgs...)
 
-	log.Printf("Translated initial command %q to %q, passing additional args %v", initialCmd, binary, initialArgs)
+	log.Printf("Translated initial command %q to %q, passing additional args %v", initialCmd, newCommand, initialArgs)
 
-	err = syscall.Exec(binary, args, env)
+	err = syscall.Exec(newCommand, args, env)
 	if err != nil {
 		log.Fatalf("exec failed: %v", err)
 	}

@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -14,76 +16,107 @@ const DefaultSock = "/tmp/api.sock"
 
 type Server struct {
 	sock string
+	srv  *http.Server
+}
+
+type CommandRequest struct {
+	Cmd string
+	Env []string
+}
+
+type CommandResponse struct {
+	Cmd string
+}
+
+func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
+	var req CommandRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(400)
+		fmt.Fprintf(w, "Failed to parse json: %v", err)
+		return
+	}
+
+	log.Printf("Requested translation of %s", req.Cmd)
+	newCommand, err := s.getCommand(req.Cmd, req.Env)
+	if err != nil {
+		w.WriteHeader(500)
+		fmt.Fprintf(w, "Failed to translate: %v", err)
+		return
+	}
+	resp := CommandResponse{
+		Cmd: newCommand,
+	}
+	respContent, err := json.Marshal(&resp)
+	if err != nil {
+		w.WriteHeader(500)
+		fmt.Fprintf(w, "Failed to json marshal result: %v", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(respContent)
+	_, _ = w.Write(respContent)
+
+}
+
+func (s *Server) getCommand(initialCommand string, env []string) (string, error) {
+	// TODO: Implement
+	return "/bin/cat", nil
 }
 
 func NewServer(sock string) *Server {
-	return &Server{
+
+	s := &Server{
 		sock: sock,
 	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/command", s.handleCommand)
+
+	s.srv = &http.Server{
+		Handler: mux,
+	}
+	return s
 }
 
 func (s *Server) Run() {
 
-	_ = os.Remove(s.sock)
-
-	l, err := net.Listen("unix", s.sock)
-	if err != nil {
-		panic(err)
-	}
-	defer l.Close()
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/binary", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("/bin/cat"))
-	})
-
-	srv := &http.Server{
-		Handler: mux,
-	}
-	log.Printf("Starting server at %s", s.sock)
-
-	// Serve blocks; if you want cancellation use srv.Serve(l) in a goroutine
-	if err := srv.Serve(l); err != nil && err != http.ErrServerClosed {
+	if err := s.serve(); err != nil {
 		panic(err)
 	}
 }
 
-func (s *Server) Start() (stop func(), err error) {
+func (s *Server) serve() (err error) {
 
 	_ = os.Remove(s.sock)
 
 	l, err := net.Listen("unix", s.sock)
 	if err != nil {
-		return nil, err
+		return err
+	}
+	defer l.Close()
+
+	log.Printf("Starting server at %s", s.sock)
+
+	err = s.srv.Serve(l)
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+func (s *Server) Start() (stop func(), err error) {
+
+	go s.serve()
+
+	stopFn := func() {
+		_ = s.srv.Shutdown(context.Background())
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/binary", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("/bin/cat"))
-	})
-
-	srv := &http.Server{
-		Handler: mux,
-	}
-	go srv.Serve(l)
-
-	// wait until the server accepts connections
-	serverCameUp := false
-	for i := 0; i < 100; i++ {
-		conn, err := net.Dial("unix", s.sock)
-		if err == nil {
+	for range 100 {
+		if conn, err := net.Dial("unix", s.sock); err == nil {
 			conn.Close()
-			serverCameUp = true
-			break
+			return stopFn, nil
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if !serverCameUp {
-		srv.Shutdown(context.Background())
-		return nil, errors.New("server did not start up")
-	}
-
-	return func() {
-		_ = srv.Shutdown(context.Background())
-	}, nil
+	return nil, errors.New("server did not start up")
 }

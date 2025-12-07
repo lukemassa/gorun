@@ -4,18 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+
+	"github.com/lukemassa/gorun/internal/server"
 )
 
 type Client struct {
 	httpClient *http.Client
-}
-
-type commandRequest struct {
-	Cmd string
-	Env []string
 }
 
 func NewClient(sock string) *Client {
@@ -35,7 +33,7 @@ func NewClient(sock string) *Client {
 
 func (c *Client) GetCommand(cmd string, env []string) (string, error) {
 
-	requestContent := commandRequest{
+	requestContent := server.CommandRequest{
 		Cmd: cmd,
 		Env: env,
 	}
@@ -55,10 +53,19 @@ func (c *Client) GetCommand(cmd string, env []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
-	return string(body), nil
+
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("got %d calling API: %s", resp.StatusCode, string(body))
+	}
+	var commandResponse server.CommandResponse
+	err = json.Unmarshal(body, &commandResponse)
+	if err != nil {
+		return "", err
+	}
+
+	return commandResponse.Cmd, nil
 }

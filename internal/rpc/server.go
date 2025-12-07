@@ -1,7 +1,6 @@
 package rpc
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -24,7 +23,6 @@ func (s Server) Run() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/binary", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println(r)
 		w.Write([]byte("/bin/echo"))
 	})
 

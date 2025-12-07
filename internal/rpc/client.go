@@ -13,6 +13,11 @@ type Client struct {
 	httpClient *http.Client
 }
 
+type commandRequest struct {
+	Cmd string
+	Env []string
+}
+
 func NewClient() *Client {
 
 	tr := &http.Transport{
@@ -30,19 +35,23 @@ func NewClient() *Client {
 
 func (c *Client) GetBinary(cmd string, env []string) (string, error) {
 
-	b, err := json.Marshal(body)
+	requestContent := commandRequest{
+		Cmd: cmd,
+		Env: env,
+	}
+	b, err := json.Marshal(requestContent)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(b))
+	// URL host is ignored — must be syntactically valid, but irrelevant.
+	req, err := http.NewRequest("POST", "http://unix/binary", bytes.NewReader(b))
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Get("http://unix/binary")
-	// URL host is ignored — must be syntactically valid, but irrelevant.
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return "", err
 	}

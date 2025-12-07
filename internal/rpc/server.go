@@ -23,7 +23,7 @@ func (s Server) Run() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/binary", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("/bin/echo"))
+		w.Write([]byte("/bin/cat"))
 	})
 
 	srv := &http.Server{

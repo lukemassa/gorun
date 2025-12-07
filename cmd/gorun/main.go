@@ -5,11 +5,12 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/lukemassa/gorun/internal/rpc"
+	"github.com/lukemassa/gorun/internal/client"
+	"github.com/lukemassa/gorun/internal/server"
 )
 
 func main() {
-	client := rpc.NewClient()
+	client := client.NewClient(server.DefaultSock)
 
 	env := os.Environ()
 

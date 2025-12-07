@@ -1,4 +1,4 @@
-package rpc
+package server
 
 import (
 	"log"
@@ -7,15 +7,23 @@ import (
 	"os"
 )
 
-const sock = "/tmp/api.sock"
+const DefaultSock = "/tmp/api.sock"
 
-type Server struct{}
+type Server struct {
+	sock string
+}
 
-func (s Server) Run() {
+func NewServer(sock string) *Server {
+	return &Server{
+		sock: sock,
+	}
+}
 
-	_ = os.Remove(sock)
+func (s *Server) Run() {
 
-	l, err := net.Listen("unix", sock)
+	_ = os.Remove(s.sock)
+
+	l, err := net.Listen("unix", s.sock)
 	if err != nil {
 		panic(err)
 	}
@@ -29,7 +37,7 @@ func (s Server) Run() {
 	srv := &http.Server{
 		Handler: mux,
 	}
-	log.Printf("Starting server at %s", sock)
+	log.Printf("Starting server at %s", s.sock)
 
 	// Serve blocks; if you want cancellation use srv.Serve(l) in a goroutine
 	if err := srv.Serve(l); err != nil && err != http.ErrServerClosed {

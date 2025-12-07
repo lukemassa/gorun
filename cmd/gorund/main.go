@@ -1,12 +1,12 @@
 package main
 
 import (
-	"github.com/lukemassa/gorun/internal/rpc"
+	"github.com/lukemassa/gorun/internal/server"
 )
 
 func main() {
 
-	server := rpc.Server{}
+	server := server.NewServer(server.DefaultSock)
 
 	server.Run()
 }

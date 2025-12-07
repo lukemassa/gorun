@@ -1,4 +1,4 @@
-package rpc
+package client
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ type commandRequest struct {
 	Env []string
 }
 
-func NewClient() *Client {
+func NewClient(sock string) *Client {
 
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {

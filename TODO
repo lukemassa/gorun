@@ -1,3 +1,5 @@
-- Pass the cmd and env from client to server
 - Build on server hit
+- Cache build
 - Better socket address
+- Run server as a background process
+- Server listen to file changes and trigger rebuild

@@ -57,7 +57,6 @@ func (c *Client) GetCommand(cmd string, env []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("got %d calling API: %s", resp.StatusCode, string(body))
 	}

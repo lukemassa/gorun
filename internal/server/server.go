@@ -9,10 +9,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 )
 
-const DefaultSock = "/tmp/api.sock"
+var DefaultSock string
 
 type Server struct {
 	sock string
@@ -26,6 +27,14 @@ type CommandRequest struct {
 
 type CommandResponse struct {
 	Cmd string
+}
+
+func init() {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		panic(err)
+	}
+	DefaultSock = filepath.Join(cacheDir, "gorun.sock")
 }
 
 func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +62,6 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(respContent)
 	_, _ = w.Write(respContent)
 
 }

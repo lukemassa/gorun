@@ -1,5 +1,3 @@
-- Build on server hit
 - Cache build
-- Better socket address
 - Run server as a background process
 - Server listen to file changes and trigger rebuild

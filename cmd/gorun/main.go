@@ -6,33 +6,35 @@ import (
 	"syscall"
 
 	"github.com/lukemassa/gorun/internal/client"
-	"github.com/lukemassa/gorun/internal/server"
+	"github.com/lukemassa/gorun/internal/config"
 )
 
 func main() {
 	sock := os.Getenv("GORUN_SOCKET")
 	if sock == "" {
-		sock = server.DefaultSock
+		sock = config.DefaultSock()
 	}
 	client := client.NewClient(sock)
 
 	env := os.Environ()
+	if len(os.Args) < 2 {
+		log.Fatal("Expect argument for package")
+	}
+	mainPackage := os.Args[1]
+	mainArgs := os.Args[2:]
 
-	initialCmd := os.Args[0]
-	initialArgs := os.Args[1:]
-
-	newCommand, err := client.GetCommand(initialCmd, env)
+	executable, err := client.GetCommand(mainPackage, env)
 	// URL host is ignored — must be syntactically valid, but irrelevant.
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	args := []string{newCommand}
-	args = append(args, initialArgs...)
+	args := []string{executable}
+	args = append(args, mainArgs...)
 
-	log.Printf("Translated initial command %q to %q, passing additional args %v", initialCmd, newCommand, initialArgs)
+	log.Printf("Compiled context for %q to %q, passing additional args %v", mainPackage, executable, mainArgs)
 
-	err = syscall.Exec(newCommand, args, env)
+	err = syscall.Exec(executable, args, env)
 	if err != nil {
 		log.Fatalf("exec failed: %v", err)
 	}

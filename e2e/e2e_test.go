@@ -9,12 +9,17 @@ import (
 
 func TestRun(t *testing.T) {
 	result := runCLI(t, fstest.MapFS{
-		"hello.txt": &fstest.MapFile{
-			Data: []byte("Contents!"),
-		},
-	}, "hello.txt")
+		"main.go": &fstest.MapFile{
+			Data: []byte(`package main
+import "fmt"
 
-	assert.Equal(t, "Contents!", result.Stdout)
+func main() {
+	fmt.Println("Hello Gorun!")
+}`),
+		},
+	}, "main.go")
+
+	assert.Equal(t, "Hello Gorun!\n", result.Stdout)
 	assert.Equal(t, 0, result.Code)
-	assert.Contains(t, result.Stderr, "Translated initial command")
+	assert.Contains(t, result.Stderr, "Compiled context for")
 }

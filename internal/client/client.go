@@ -33,9 +33,9 @@ func NewClient(sock string) *Client {
 
 func (c *Client) GetCommand(cmd string, env []string) (string, error) {
 
-	requestContent := server.CommandRequest{
-		Cmd: cmd,
-		Env: env,
+	requestContent := server.ExecutableRequest{
+		MainPackage: cmd,
+		Env:         env,
 	}
 	b, err := json.Marshal(requestContent)
 	if err != nil {
@@ -60,11 +60,11 @@ func (c *Client) GetCommand(cmd string, env []string) (string, error) {
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("got %d calling API: %s", resp.StatusCode, string(body))
 	}
-	var commandResponse server.CommandResponse
+	var commandResponse server.ExecutableResponse
 	err = json.Unmarshal(body, &commandResponse)
 	if err != nil {
 		return "", err
 	}
 
-	return commandResponse.Cmd, nil
+	return commandResponse.Executable, nil
 }

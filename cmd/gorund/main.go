@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/lukemassa/gorun/internal/config"
 	"github.com/lukemassa/gorun/internal/server"
 )
 
@@ -16,7 +17,7 @@ func main() {
 	if len(os.Args) != 2 {
 		usage()
 	}
-	server := server.NewServer(server.DefaultSock)
+	server := server.NewServer(config.DefaultSock())
 	switch os.Args[1] {
 	case "run":
 		server.Run()

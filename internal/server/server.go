@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,13 +11,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
-)
-
-var (
-	DefaultSock string
-	CacheDir    string
 )
 
 type Server struct {
@@ -23,45 +22,59 @@ type Server struct {
 	srv  *http.Server
 }
 
-type CommandRequest struct {
-	Cmd string
-	Env []string
+type ExecutableRequest struct {
+	MainPackage string
+	Env         []string
 }
 
-type CommandResponse struct {
-	Cmd string
+type ExecutableResponse struct {
+	Executable string
 }
 
-func init() {
-	userCacheDir, err := os.UserCacheDir()
+type ExecutableContext struct {
+	MainPackage string
+	Directory   string
+}
+
+func (e ExecutableContext) Key() (string, error) {
+	b, err := json.Marshal(e)
 	if err != nil {
-		panic(err)
+		return "", err
 	}
-	CacheDir = filepath.Join(userCacheDir, "gorun-cache")
-	err = os.MkdirAll(CacheDir, os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-	DefaultSock = filepath.Join(CacheDir, "gorun.sock")
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:]), nil
 }
 
-func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
-	var req CommandRequest
+func valueFromEnv(key string, env []string) string {
+	for i := 0; i < len(env); i++ {
+		if strings.HasPrefix(env[i], key+"=") {
+			return env[i][len(key)+1:]
+		}
+	}
+	return ""
+}
+
+func (s *Server) handleExecutable(w http.ResponseWriter, r *http.Request) {
+	var req ExecutableRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(400)
 		fmt.Fprintf(w, "Failed to parse json: %v", err)
 		return
 	}
 
-	log.Printf("Requested translation of %s", req.Cmd)
-	newCommand, err := s.getCommand(req.Cmd, req.Env)
+	log.Printf("Requested translation of %s", req.MainPackage)
+	executableContext := ExecutableContext{
+		MainPackage: req.MainPackage,
+		Directory:   valueFromEnv("PWD", req.Env),
+	}
+	newCommand, err := s.getExecutableFromContext(executableContext)
 	if err != nil {
 		w.WriteHeader(500)
 		fmt.Fprintf(w, "Failed to translate: %v", err)
 		return
 	}
-	resp := CommandResponse{
-		Cmd: newCommand,
+	resp := ExecutableResponse{
+		Executable: newCommand,
 	}
 	respContent, err := json.Marshal(&resp)
 	if err != nil {
@@ -74,9 +87,22 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func (s *Server) getCommand(initialCommand string, env []string) (string, error) {
-	// TODO: Implement
-	return "/bin/cat", nil
+func (s *Server) getExecutableFromContext(executableContext ExecutableContext) (string, error) {
+
+	key, err := executableContext.Key()
+	if err != nil {
+		return "", err
+	}
+	exectuable := filepath.Join("/tmp", key)
+
+	cmd := exec.Command("go", "build", "-o", exectuable, executableContext.MainPackage)
+	cmd.Dir = executableContext.Directory
+	log.Printf("Running go build -o %s %s at %s", exectuable, executableContext.MainPackage, executableContext.Directory)
+	err = cmd.Run()
+	if err != nil {
+		return "", err
+	}
+	return exectuable, nil
 }
 
 func NewServer(sock string) *Server {
@@ -85,7 +111,7 @@ func NewServer(sock string) *Server {
 		sock: sock,
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/command", s.handleCommand)
+	mux.HandleFunc("/command", s.handleExecutable)
 
 	s.srv = &http.Server{
 		Handler: mux,

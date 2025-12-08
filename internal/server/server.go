@@ -13,7 +13,10 @@ import (
 	"time"
 )
 
-var DefaultSock string
+var (
+	DefaultSock string
+	CacheDir    string
+)
 
 type Server struct {
 	sock string
@@ -30,11 +33,16 @@ type CommandResponse struct {
 }
 
 func init() {
-	cacheDir, err := os.UserCacheDir()
+	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
 		panic(err)
 	}
-	DefaultSock = filepath.Join(cacheDir, "gorun.sock")
+	CacheDir = filepath.Join(userCacheDir, "gorun-cache")
+	err = os.MkdirAll(CacheDir, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+	DefaultSock = filepath.Join(CacheDir, "gorun.sock")
 }
 
 func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {

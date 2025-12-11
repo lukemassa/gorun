@@ -1,14 +1,14 @@
 package server
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/zeebo/xxh3"
 
 	log "github.com/lukemassa/clilog"
 )
@@ -19,13 +19,14 @@ type ExecutableContext struct {
 }
 
 func (e ExecutableContext) Key() string {
-	b, err := json.Marshal(e)
-	if err != nil {
-		panic(err)
-	}
-	// TODO: We call this a lot, should I use a simpler hashing algo?
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
+	b := fmt.Appendf(nil, "%s\x00%s", e.MainPackage, e.Directory)
+	return hashBytes(b)
+}
+
+func hashBytes(in []byte) string {
+	sum := xxh3.Hash128(in)
+	b := sum.Bytes()
+	return hex.EncodeToString(b[:])
 }
 
 func (s *Server) executablePath(e ExecutableContext) string {

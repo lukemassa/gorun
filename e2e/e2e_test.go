@@ -62,4 +62,24 @@ func main() {
 	assert.Equal(t, "Hello Gorun!\n", result.Stdout)
 	assert.Equal(t, 0, result.Code)
 	assert.Contains(t, result.Stderr, "Compiled context for")
+
+	writeFS(t, fstest.MapFS{
+		"different.go": &fstest.MapFile{
+			Data: []byte(`package main
+import "fmt"
+
+func main() {
+	fmt.Println("Something else!")
+}`),
+		},
+	}, workingDir)
+
+	result = runCLI(t, workingDir, "different.go")
+
+	// This one should not be cached
+
+	assert.Equal(t, "Something else!\n", result.Stdout)
+	assert.Equal(t, 0, result.Code)
+	assert.Contains(t, result.Stderr, "Compiled context for")
+
 }

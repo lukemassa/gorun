@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 
+	log "github.com/lukemassa/clilog"
 	"github.com/lukemassa/gorun/internal/server"
 )
 
@@ -65,6 +66,43 @@ func (c *Client) GetCommand(cmd string, env []string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if commandResponse.Executable == "" {
+		return "", fmt.Errorf("failed to compile: %s", commandResponse)
+	}
 
 	return commandResponse.Executable, nil
+}
+
+func (c *Client) DeleteCommand(cmd string, env []string) error {
+
+	// TODO: Dedupe from above
+	requestContent := server.ExecutableRequest{
+		MainPackage: cmd,
+		Env:         env,
+	}
+	b, err := json.Marshal(requestContent)
+	if err != nil {
+		return err
+	}
+
+	// URL host is ignored — must be syntactically valid, but irrelevant.
+	req, err := http.NewRequest("DELETE", "http://unix/command", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("got %d calling API: %s", resp.StatusCode, string(body))
+	}
+	log.Debugf("Deleted response: %s", string(body))
+	return nil
 }

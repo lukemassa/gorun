@@ -14,12 +14,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
 type Server struct {
-	sock string
-	srv  *http.Server
+	sock         string
+	srv          *http.Server
+	cacheDir     string
+	buildCache   map[string]bool
+	buildCacheMu *sync.RWMutex
 }
 
 type ExecutableRequest struct {
@@ -36,13 +40,14 @@ type ExecutableContext struct {
 	Directory   string
 }
 
-func (e ExecutableContext) Key() (string, error) {
+func (e ExecutableContext) Key() string {
 	b, err := json.Marshal(e)
 	if err != nil {
-		return "", err
+		panic(err)
 	}
+	// TODO: We call this a lot, should I use a simpler hashing algo?
 	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	return hex.EncodeToString(sum[:])
 }
 
 func valueFromEnv(key string, env []string) string {
@@ -87,28 +92,56 @@ func (s *Server) handleExecutable(w http.ResponseWriter, r *http.Request) {
 
 }
 
+func (s *Server) executablePath(e ExecutableContext) string {
+	return filepath.Join(s.cacheDir, e.Key())
+}
+
 func (s *Server) getExecutableFromContext(executableContext ExecutableContext) (string, error) {
 
-	key, err := executableContext.Key()
+	key := executableContext.Key()
+	if s.isAlreadyCompiled(executableContext) {
+		log.Printf("Skipping compilation for %s", key)
+		return s.executablePath(executableContext), nil
+	}
+
+	err := s.compile(executableContext)
+
 	if err != nil {
 		return "", err
 	}
-	exectuable := filepath.Join("/tmp", key)
 
+	s.buildCacheMu.Lock()
+	s.buildCache[key] = true
+	s.buildCacheMu.Unlock()
+	return s.executablePath(executableContext), nil
+}
+
+func (s *Server) isAlreadyCompiled(executableContext ExecutableContext) bool {
+	s.buildCacheMu.RLock()
+	defer s.buildCacheMu.RUnlock()
+	return s.buildCache[executableContext.Key()]
+}
+
+func (s *Server) compile(executableContext ExecutableContext) error {
+	exectuable := s.executablePath(executableContext)
 	cmd := exec.Command("go", "build", "-o", exectuable, executableContext.MainPackage)
 	cmd.Dir = executableContext.Directory
 	log.Printf("Running go build -o %s %s at %s", exectuable, executableContext.MainPackage, executableContext.Directory)
-	err = cmd.Run()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", err
+		log.Printf("Failed to build: %s", string(output))
+		return err
 	}
-	return exectuable, nil
+	return nil
 }
 
-func NewServer(sock string) *Server {
+func NewServer(sock, cacheDir string) *Server {
 
 	s := &Server{
-		sock: sock,
+		sock:         sock,
+		cacheDir:     cacheDir,
+		buildCache:   make(map[string]bool),
+		buildCacheMu: &sync.RWMutex{},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/command", s.handleExecutable)

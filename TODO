@@ -1,3 +1,3 @@
-- Cache build
 - Run server as a background process
 - Server listen to file changes and trigger rebuild
+- Use clilog

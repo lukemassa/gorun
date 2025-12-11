@@ -17,7 +17,7 @@ func main() {
 	if len(os.Args) != 2 {
 		usage()
 	}
-	server := server.NewServer(config.DefaultSock())
+	server := server.NewServer(config.DefaultSock(), config.CacheDir())
 	switch os.Args[1] {
 	case "run":
 		server.Run()

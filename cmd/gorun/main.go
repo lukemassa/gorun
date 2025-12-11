@@ -32,7 +32,7 @@ func main() {
 	args := []string{executable}
 	args = append(args, mainArgs...)
 
-	log.Printf("Compiled context for %q to %q, passing additional args %v", mainPackage, executable, mainArgs)
+	// log.Printf("Compiled context for %q to %q, passing additional args %v", mainPackage, executable, mainArgs)
 
 	err = syscall.Exec(executable, args, env)
 	if err != nil {

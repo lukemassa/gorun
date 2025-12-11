@@ -38,7 +38,7 @@ func TestMain(m *testing.M) {
 	}
 
 	socketPath = filepath.Join(dir, "socket")
-	server := server.NewServer(socketPath)
+	server := server.NewServer(socketPath, dir)
 	cancel, err := server.Start()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to startz test server: %s\n%s", err, out)

@@ -58,15 +58,11 @@ type RunResult struct {
 
 // runCLI runs the CLI with the args, in a directory with the files from fsys
 // If the command times out, the code is set to -1
-func runCLI(t *testing.T, fsys fs.FS, args ...string) RunResult {
+func runCLI(t *testing.T, workingDir string, args ...string) RunResult {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, cliPath, args...)
-
-	workingDir := t.TempDir()
-
-	writeFS(t, fsys, workingDir)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

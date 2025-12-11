@@ -8,7 +8,9 @@ import (
 )
 
 func TestRun(t *testing.T) {
-	result := runCLI(t, fstest.MapFS{
+	workingDir := t.TempDir()
+
+	writeFS(t, fstest.MapFS{
 		"main.go": &fstest.MapFile{
 			Data: []byte(`package main
 import "fmt"
@@ -17,7 +19,9 @@ func main() {
 	fmt.Println("Hello Gorun!")
 }`),
 		},
-	}, "main.go")
+	}, workingDir)
+
+	result := runCLI(t, workingDir, "main.go")
 
 	assert.Equal(t, "Hello Gorun!\n", result.Stdout)
 	assert.Equal(t, 0, result.Code)
@@ -25,7 +29,9 @@ func main() {
 }
 
 func TestCache(t *testing.T) {
-	runCLI(t, fstest.MapFS{
+	workingDir := t.TempDir()
+
+	writeFS(t, fstest.MapFS{
 		"main.go": &fstest.MapFile{
 			Data: []byte(`package main
 import "fmt"
@@ -34,18 +40,22 @@ func main() {
 	fmt.Println("Hello Gorun!")
 }`),
 		},
-	}, "main.go")
+	}, workingDir)
 
-	result := runCLI(t, fstest.MapFS{
+	runCLI(t, workingDir, "main.go")
+
+	writeFS(t, fstest.MapFS{
 		"main.go": &fstest.MapFile{
 			Data: []byte(`package main
 import "fmt"
 
 func main() {
-	fmt.Println("A second thing")
+	fmt.Println("Something else!")
 }`),
 		},
-	}, "main.go")
+	}, workingDir)
+
+	result := runCLI(t, workingDir, "main.go")
 
 	// This should still get the result of the first run, since it's still cached
 

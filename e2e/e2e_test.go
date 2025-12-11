@@ -25,7 +25,7 @@ func main() {
 
 	assert.Equal(t, "Hello Gorun!\n", result.Stdout)
 	assert.Equal(t, 0, result.Code)
-	//assert.Contains(t, result.Stderr, "Compiled context for")
+	assert.Contains(t, result.Stderr, "Compiled context for")
 }
 
 func TestCache(t *testing.T) {
@@ -61,5 +61,5 @@ func main() {
 
 	assert.Equal(t, "Hello Gorun!\n", result.Stdout)
 	assert.Equal(t, 0, result.Code)
-	//assert.Contains(t, result.Stderr, "Compiled context for")
+	assert.Contains(t, result.Stderr, "Compiled context for")
 }

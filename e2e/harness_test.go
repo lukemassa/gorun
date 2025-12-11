@@ -70,6 +70,7 @@ func runCLI(t *testing.T, workingDir string, args ...string) RunResult {
 	cmd.Dir = workingDir
 	cmd.Env = append(cmd.Env, fmt.Sprintf("GORUN_SOCKET=%s", socketPath))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PWD=%s", workingDir))
+	cmd.Env = append(cmd.Env, "GORUN_DEBUG=1")
 
 	err := cmd.Run()
 

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/lukemassa/clilog"
 )
 
 type Server struct {
@@ -67,7 +68,7 @@ func (s *Server) handleExecutable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Requested translation of %s", req.MainPackage)
+	log.Infof("Requested translation of %s", req.MainPackage)
 	executableContext := ExecutableContext{
 		MainPackage: req.MainPackage,
 		Directory:   valueFromEnv("PWD", req.Env),
@@ -100,7 +101,7 @@ func (s *Server) getExecutableFromContext(executableContext ExecutableContext) (
 
 	key := executableContext.Key()
 	if s.isAlreadyCompiled(executableContext) {
-		log.Printf("Skipping compilation for %s", key)
+		log.Infof("Skipping compilation for %s", key)
 		return s.executablePath(executableContext), nil
 	}
 
@@ -126,10 +127,10 @@ func (s *Server) compile(executableContext ExecutableContext) error {
 	exectuable := s.executablePath(executableContext)
 	cmd := exec.Command("go", "build", "-o", exectuable, executableContext.MainPackage)
 	cmd.Dir = executableContext.Directory
-	log.Printf("Running go build -o %s %s at %s", exectuable, executableContext.MainPackage, executableContext.Directory)
+	log.Infof("Running go build -o %s %s at %s", exectuable, executableContext.MainPackage, executableContext.Directory)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("Failed to build: %s", string(output))
+		log.Warnf("Failed to build: %s", string(output))
 		return err
 	}
 	return nil
@@ -169,7 +170,7 @@ func (s *Server) serve() (err error) {
 	}
 	defer l.Close()
 
-	log.Printf("Starting server at %s", s.sock)
+	log.Infof("Starting server at %s", s.sock)
 
 	err = s.srv.Serve(l)
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {

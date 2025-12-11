@@ -1,10 +1,10 @@
 package main
 
 import (
-	"log"
 	"os"
 	"syscall"
 
+	log "github.com/lukemassa/clilog"
 	"github.com/lukemassa/gorun/internal/client"
 	"github.com/lukemassa/gorun/internal/config"
 )
@@ -13,6 +13,10 @@ func main() {
 	sock := os.Getenv("GORUN_SOCKET")
 	if sock == "" {
 		sock = config.DefaultSock()
+	}
+
+	if os.Getenv("GORUN_DEBUG") != "" {
+		log.SetLogLevel(log.LevelDebug)
 	}
 	client := client.NewClient(sock)
 
@@ -32,7 +36,7 @@ func main() {
 	args := []string{executable}
 	args = append(args, mainArgs...)
 
-	// log.Printf("Compiled context for %q to %q, passing additional args %v", mainPackage, executable, mainArgs)
+	log.Debugf("Compiled context for %q to %q, passing additional args %v", mainPackage, executable, mainArgs)
 
 	err = syscall.Exec(executable, args, env)
 	if err != nil {

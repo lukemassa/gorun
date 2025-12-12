@@ -1,8 +1,8 @@
 package server
 
 import (
+	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -20,35 +20,36 @@ type ExecutableContext struct {
 }
 
 type BuildCache struct {
-	cacheDir              string
-	compiler              compiler
-	mu                    sync.RWMutex
-	isCached              map[string]bool
-	compilationInProgress map[string]*sync.Mutex
+	cacheDir    string
+	compiler    compiler
+	mu          sync.RWMutex
+	executables map[string]*Executable
+}
+
+type Executable struct {
+	currentPath  string
+	buildBarrier sync.Mutex
 }
 
 func NewBuildCache(cacheDir string, compiler compiler) *BuildCache {
 	return &BuildCache{
-		cacheDir:              cacheDir,
-		isCached:              make(map[string]bool),
-		mu:                    sync.RWMutex{},
-		compiler:              compiler,
-		compilationInProgress: map[string]*sync.Mutex{},
+		cacheDir:    cacheDir,
+		mu:          sync.RWMutex{},
+		compiler:    compiler,
+		executables: make(map[string]*Executable),
 	}
 }
 
 type compiler interface {
-	compile(e ExecutableContext, outputDir string) error
+	compile(e ExecutableContext, outputFile string) error
 }
 
 type defaultCompiler struct{}
 
-func (d *defaultCompiler) compile(executableContext ExecutableContext, outputDir string) error {
-	key := executableContext.Key()
-	executable := filepath.Join(outputDir, key)
-	cmd := exec.Command("go", "build", "-o", executable, executableContext.MainPackage)
+func (d *defaultCompiler) compile(executableContext ExecutableContext, outputFile string) error {
+	cmd := exec.Command("go", "build", "-o", outputFile, executableContext.MainPackage)
 	cmd.Dir = executableContext.Directory
-	log.Infof("Running go build -o %s %s at %s", executable, executableContext.MainPackage, executableContext.Directory)
+	log.Infof("Running go build -o %s %s at %s", outputFile, executableContext.MainPackage, executableContext.Directory)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Warnf("Failed to build: %s", string(output))
@@ -69,75 +70,69 @@ func hashBytes(in []byte) string {
 	return hex.EncodeToString(b[:])
 }
 
-func (s *BuildCache) executablePath(e ExecutableContext) string {
-	return filepath.Join(s.cacheDir, e.Key())
-}
-
 func (s *BuildCache) getExecutableFromContext(executableContext ExecutableContext) (string, error) {
 
 	key := executableContext.Key()
-	if s.isAlreadyCompiled(executableContext) {
-		log.Infof("Skipping compilation for %+v (%s)", executableContext, key)
-		return s.executablePath(executableContext), nil
+	var e *Executable
+	s.mu.Lock()
+	e, ok := s.executables[key]
+	if !ok {
+		e = &Executable{
+			buildBarrier: sync.Mutex{},
+		}
+		s.executables[key] = e
 	}
-	log.Infof("Compiling for %+v (%s)", executableContext, key)
-	err := s.compile(executableContext)
+	s.mu.Unlock()
 
+	e.buildBarrier.Lock()
+	log.Info("inside build lock")
+	defer e.buildBarrier.Unlock()
+	if e.currentPath != "" {
+		log.Infof("Path found %s in cache", e.currentPath)
+		return e.currentPath, nil
+	}
+	log.Infof("Must compile for %v", executableContext)
+	newPath, err := s.compile(executableContext)
+	if err != nil {
+		return "", err
+	}
+	e.currentPath = newPath
+	return newPath, nil
+}
+
+func (s *BuildCache) compile(executableContext ExecutableContext) (string, error) {
+	key := executableContext.Key()
+
+	outputDir := filepath.Join(s.cacheDir, key)
+
+	err := os.MkdirAll(outputDir, 0700)
 	if err != nil {
 		return "", err
 	}
 
-	s.mu.Lock()
-	s.isCached[key] = true
-	s.mu.Unlock()
-	return s.executablePath(executableContext), nil
-}
-
-func (s *BuildCache) isAlreadyCompiled(executableContext ExecutableContext) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.isCached[executableContext.Key()]
-}
-
-func (s *BuildCache) compile(executableContext ExecutableContext) error {
-	key := executableContext.Key()
-	var compilationLock *sync.Mutex
-	s.mu.Lock()
-	compilationLock, ok := s.compilationInProgress[key]
-	if !ok {
-		compilationLock = &sync.Mutex{}
-		s.compilationInProgress[key] = compilationLock
+	var randIdentifier []byte
+	_, err = rand.Read(randIdentifier)
+	if err != nil {
+		return "", err
 	}
-	s.mu.Unlock()
 
-	compilationLock.Lock()
-	defer compilationLock.Unlock()
-
-	return s.compiler.compile(executableContext, s.cacheDir)
+	newPath := filepath.Join(outputDir, hashBytes(randIdentifier))
+	err = s.compiler.compile(executableContext, newPath)
+	if err != nil {
+		return "", err
+	}
+	return newPath, nil
 }
 
 func (s *BuildCache) recompile(executableContext ExecutableContext) error {
 	key := executableContext.Key()
 	log.Infof("Re-compiling compilation for %+v (%s)", executableContext, key)
-	exectuable := s.executablePath(executableContext)
-
-	err := os.Remove(exectuable)
-
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove file %s: %v", exectuable, err)
-	}
 	s.mu.Lock()
-	delete(s.isCached, key)
-	s.mu.Unlock()
-
-	err = s.compile(executableContext)
-
-	if err != nil {
-		return fmt.Errorf("compiling for file %s: %v", exectuable, err)
-	}
-
+	e := s.executables[key]
 	s.mu.Lock()
-	s.isCached[key] = true
-	s.mu.Unlock()
-	return nil
+
+	e.buildBarrier.Lock()
+	defer e.buildBarrier.Unlock()
+	_, err := s.compile(executableContext)
+	return err
 }

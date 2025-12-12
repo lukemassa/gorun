@@ -23,7 +23,7 @@ func newMockCompiler() *mockCompiler {
 	}
 }
 
-func (m *mockCompiler) compile(e ExecutableContext, outputDir string) error {
+func (m *mockCompiler) compile(e ExecutableContext, outputPath string) error {
 	log.Print("Doing a mock compile!")
 	key := e.Key()
 
@@ -42,10 +42,8 @@ func (m *mockCompiler) compile(e ExecutableContext, outputDir string) error {
 		m.mu.Unlock()
 	}()
 
-	executable := filepath.Join(outputDir, key)
-
 	time.Sleep(10 * time.Millisecond) // Simulate real compilation
-	_, err := os.Create(executable)
+	_, err := os.Create(outputPath)
 
 	return err
 }
@@ -59,7 +57,7 @@ func TestExecutableFromContext(t *testing.T) {
 	key := e.Key()
 	executable, err := cache.getExecutableFromContext(e)
 	assert.NoError(t, err)
-	assert.Equal(t, filepath.Join(dir, key), executable)
+	assert.Equal(t, filepath.Join(dir, key), filepath.Dir(executable))
 	assert.FileExists(t, executable)
 }
 
@@ -74,7 +72,7 @@ func TestPreventSimultaneousCompilation(t *testing.T) {
 	// mock compiler should blow up if they are called simultaneously
 	for range 10 {
 		wg.Go(func() {
-			cache.compile(e)
+			cache.getExecutableFromContext(e)
 		})
 	}
 	wg.Wait()

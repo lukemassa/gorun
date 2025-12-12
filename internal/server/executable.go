@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 
 	"github.com/zeebo/xxh3"
 
@@ -16,6 +17,34 @@ import (
 type ExecutableContext struct {
 	MainPackage string
 	Directory   string
+}
+
+type BuildCache struct {
+	cacheDir   string
+	compiler   compiler
+	isCached   map[string]bool
+	isCachedMU *sync.RWMutex
+}
+
+type compiler interface {
+	compile(e ExecutableContext, outputDir string) error
+}
+
+type defaultCompiler struct{}
+
+func (d *defaultCompiler) compile(executableContext ExecutableContext, outputDir string) error {
+	key := executableContext.Key()
+	executable := filepath.Join(outputDir, key)
+	cmd := exec.Command("go", "build", "-o", executable, executableContext.MainPackage)
+	cmd.Dir = executableContext.Directory
+	log.Infof("Running go build -o %s %s at %s", executable, executableContext.MainPackage, executableContext.Directory)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Warnf("Failed to build: %s", string(output))
+		// do better
+		return fmt.Errorf("%s", string(output))
+	}
+	return nil
 }
 
 func (e ExecutableContext) Key() string {
@@ -29,11 +58,11 @@ func hashBytes(in []byte) string {
 	return hex.EncodeToString(b[:])
 }
 
-func (s *Server) executablePath(e ExecutableContext) string {
+func (s *BuildCache) executablePath(e ExecutableContext) string {
 	return filepath.Join(s.cacheDir, e.Key())
 }
 
-func (s *Server) getExecutableFromContext(executableContext ExecutableContext) (string, error) {
+func (s *BuildCache) getExecutableFromContext(executableContext ExecutableContext) (string, error) {
 
 	key := executableContext.Key()
 	if s.isAlreadyCompiled(executableContext) {
@@ -41,25 +70,25 @@ func (s *Server) getExecutableFromContext(executableContext ExecutableContext) (
 		return s.executablePath(executableContext), nil
 	}
 	log.Infof("Compiling for %+v (%s)", executableContext, key)
-	err := s.compile(executableContext)
+	err := s.compiler.compile(executableContext, s.cacheDir)
 
 	if err != nil {
 		return "", err
 	}
 
-	s.buildCacheMu.Lock()
-	s.buildCache[key] = true
-	s.buildCacheMu.Unlock()
+	s.isCachedMU.Lock()
+	s.isCached[key] = true
+	s.isCachedMU.Unlock()
 	return s.executablePath(executableContext), nil
 }
 
-func (s *Server) isAlreadyCompiled(executableContext ExecutableContext) bool {
-	s.buildCacheMu.RLock()
-	defer s.buildCacheMu.RUnlock()
-	return s.buildCache[executableContext.Key()]
+func (s *BuildCache) isAlreadyCompiled(executableContext ExecutableContext) bool {
+	s.isCachedMU.RLock()
+	defer s.isCachedMU.RUnlock()
+	return s.isCached[executableContext.Key()]
 }
 
-func (s *Server) compile(executableContext ExecutableContext) error {
+func (s *BuildCache) compile(executableContext ExecutableContext) error {
 	exectuable := s.executablePath(executableContext)
 	cmd := exec.Command("go", "build", "-o", exectuable, executableContext.MainPackage)
 	cmd.Dir = executableContext.Directory
@@ -73,7 +102,7 @@ func (s *Server) compile(executableContext ExecutableContext) error {
 	return nil
 }
 
-func (s *Server) recompile(executableContext ExecutableContext) error {
+func (s *BuildCache) recompile(executableContext ExecutableContext) error {
 	key := executableContext.Key()
 	log.Infof("Re-compiling compilation for %+v (%s)", executableContext, key)
 	exectuable := s.executablePath(executableContext)
@@ -83,9 +112,9 @@ func (s *Server) recompile(executableContext ExecutableContext) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove file %s: %v", exectuable, err)
 	}
-	s.buildCacheMu.Lock()
-	delete(s.buildCache, key)
-	s.buildCacheMu.Unlock()
+	s.isCachedMU.Lock()
+	delete(s.isCached, key)
+	s.isCachedMU.Unlock()
 
 	err = s.compile(executableContext)
 
@@ -93,8 +122,8 @@ func (s *Server) recompile(executableContext ExecutableContext) error {
 		return fmt.Errorf("compiling for file %s: %v", exectuable, err)
 	}
 
-	s.buildCacheMu.Lock()
-	s.buildCache[key] = true
-	s.buildCacheMu.Unlock()
+	s.isCachedMU.Lock()
+	s.isCached[key] = true
+	s.isCachedMU.Unlock()
 	return nil
 }

@@ -16,11 +16,9 @@ import (
 )
 
 type Server struct {
-	sock         string
-	srv          *http.Server
-	cacheDir     string
-	buildCache   map[string]bool
-	buildCacheMu *sync.RWMutex
+	sock  string
+	srv   *http.Server
+	cache BuildCache
 }
 
 type ExecutableRequest struct {
@@ -46,7 +44,7 @@ func (s *Server) handleExecutable(w http.ResponseWriter, r *http.Request) {
 		MainPackage: req.MainPackage,
 		Directory:   valueFromEnv("PWD", req.Env),
 	}
-	newCommand, err := s.getExecutableFromContext(executableContext)
+	newCommand, err := s.cache.getExecutableFromContext(executableContext)
 	resp := ExecutableResponse{
 		Executable: newCommand,
 	}
@@ -78,7 +76,7 @@ func (s *Server) handleDeleteExecutable(w http.ResponseWriter, r *http.Request) 
 		MainPackage: req.MainPackage,
 		Directory:   valueFromEnv("PWD", req.Env),
 	}
-	err := s.recompile(executableContext)
+	err := s.cache.recompile(executableContext)
 	if err != nil {
 		w.WriteHeader(500)
 		fmt.Fprintf(w, "Failed to recompile: %v", err)
@@ -91,10 +89,13 @@ func (s *Server) handleDeleteExecutable(w http.ResponseWriter, r *http.Request) 
 func NewServer(sock, cacheDir string) *Server {
 
 	s := &Server{
-		sock:         sock,
-		cacheDir:     cacheDir,
-		buildCache:   make(map[string]bool),
-		buildCacheMu: &sync.RWMutex{},
+		sock: sock,
+		cache: BuildCache{
+			cacheDir:   cacheDir,
+			isCached:   make(map[string]bool),
+			isCachedMU: &sync.RWMutex{},
+			compiler:   &defaultCompiler{},
+		},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /command", s.handleExecutable)

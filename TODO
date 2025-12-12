@@ -1,5 +1,4 @@
 - Implement start|stop for debug run
 - Allow for kicking off the daemon on runs
 - Server listen to file changes and trigger rebuild
-- Add tests for deletion from cache
-- Lock compilations
+- Fix bug where recompile deletes executable out from under command

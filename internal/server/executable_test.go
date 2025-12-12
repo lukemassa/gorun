@@ -77,3 +77,51 @@ func TestPreventSimultaneousCompilation(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+type blockingCompiler struct {
+	started chan struct{}
+	proceed chan struct{}
+}
+
+func (b *blockingCompiler) compile(e ExecutableContext, outputDir string) error {
+	// Signal that compile has started (and recompile already removed the file)
+	b.started <- struct{}{}
+
+	// Block until test allows us to continue
+	<-b.proceed
+
+	path := filepath.Join(outputDir, e.Key())
+	_, err := os.Create(path)
+	return err
+}
+func TestReturnedPathRemainsUsableDuringRecompile(t *testing.T) {
+	dir := t.TempDir()
+
+	c := &blockingCompiler{
+		started: make(chan struct{}, 1),
+		proceed: make(chan struct{}, 1),
+	}
+
+	cache := NewBuildCache(dir, c)
+	e := ExecutableContext{}
+
+	// Allow the initial compile to finish
+	c.proceed <- struct{}{}
+
+	path, err := cache.getExecutableFromContext(e)
+	assert.NoError(t, err)
+
+	// Drain the "started" signal from the initial compile
+	<-c.started
+
+	// Start a recompile AFTER the path is handed out
+	go func() {
+		_ = cache.recompile(e)
+	}()
+
+	// Wait until recompile has removed the file and is blocked in compile
+	<-c.started
+
+	// Invariant: the returned path should still be usable
+	assert.FileExists(t, path)
+}

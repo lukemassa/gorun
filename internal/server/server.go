@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	log "github.com/lukemassa/clilog"
@@ -18,7 +17,7 @@ import (
 type Server struct {
 	sock  string
 	srv   *http.Server
-	cache BuildCache
+	cache *BuildCache
 }
 
 type ExecutableRequest struct {
@@ -89,13 +88,8 @@ func (s *Server) handleDeleteExecutable(w http.ResponseWriter, r *http.Request) 
 func NewServer(sock, cacheDir string) *Server {
 
 	s := &Server{
-		sock: sock,
-		cache: BuildCache{
-			cacheDir:   cacheDir,
-			isCached:   make(map[string]bool),
-			isCachedMU: &sync.RWMutex{},
-			compiler:   &defaultCompiler{},
-		},
+		sock:  sock,
+		cache: NewBuildCache(cacheDir, &defaultCompiler{}),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /command", s.handleExecutable)

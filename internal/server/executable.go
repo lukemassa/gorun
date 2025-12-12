@@ -20,10 +20,21 @@ type ExecutableContext struct {
 }
 
 type BuildCache struct {
-	cacheDir   string
-	compiler   compiler
-	isCached   map[string]bool
-	isCachedMU *sync.RWMutex
+	cacheDir              string
+	compiler              compiler
+	mu                    sync.RWMutex
+	isCached              map[string]bool
+	compilationInProgress map[string]*sync.Mutex
+}
+
+func NewBuildCache(cacheDir string, compiler compiler) *BuildCache {
+	return &BuildCache{
+		cacheDir:              cacheDir,
+		isCached:              make(map[string]bool),
+		mu:                    sync.RWMutex{},
+		compiler:              compiler,
+		compilationInProgress: map[string]*sync.Mutex{},
+	}
 }
 
 type compiler interface {
@@ -70,36 +81,39 @@ func (s *BuildCache) getExecutableFromContext(executableContext ExecutableContex
 		return s.executablePath(executableContext), nil
 	}
 	log.Infof("Compiling for %+v (%s)", executableContext, key)
-	err := s.compiler.compile(executableContext, s.cacheDir)
+	err := s.compile(executableContext)
 
 	if err != nil {
 		return "", err
 	}
 
-	s.isCachedMU.Lock()
+	s.mu.Lock()
 	s.isCached[key] = true
-	s.isCachedMU.Unlock()
+	s.mu.Unlock()
 	return s.executablePath(executableContext), nil
 }
 
 func (s *BuildCache) isAlreadyCompiled(executableContext ExecutableContext) bool {
-	s.isCachedMU.RLock()
-	defer s.isCachedMU.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.isCached[executableContext.Key()]
 }
 
 func (s *BuildCache) compile(executableContext ExecutableContext) error {
-	exectuable := s.executablePath(executableContext)
-	cmd := exec.Command("go", "build", "-o", exectuable, executableContext.MainPackage)
-	cmd.Dir = executableContext.Directory
-	log.Infof("Running go build -o %s %s at %s", exectuable, executableContext.MainPackage, executableContext.Directory)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		log.Warnf("Failed to build: %s", string(output))
-		// do better
-		return fmt.Errorf("%s", string(output))
+	key := executableContext.Key()
+	var compilationLock *sync.Mutex
+	s.mu.Lock()
+	compilationLock, ok := s.compilationInProgress[key]
+	if !ok {
+		compilationLock = &sync.Mutex{}
+		s.compilationInProgress[key] = compilationLock
 	}
-	return nil
+	s.mu.Unlock()
+
+	compilationLock.Lock()
+	defer compilationLock.Unlock()
+
+	return s.compiler.compile(executableContext, s.cacheDir)
 }
 
 func (s *BuildCache) recompile(executableContext ExecutableContext) error {
@@ -112,9 +126,9 @@ func (s *BuildCache) recompile(executableContext ExecutableContext) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("remove file %s: %v", exectuable, err)
 	}
-	s.isCachedMU.Lock()
+	s.mu.Lock()
 	delete(s.isCached, key)
-	s.isCachedMU.Unlock()
+	s.mu.Unlock()
 
 	err = s.compile(executableContext)
 
@@ -122,8 +136,8 @@ func (s *BuildCache) recompile(executableContext ExecutableContext) error {
 		return fmt.Errorf("compiling for file %s: %v", exectuable, err)
 	}
 
-	s.isCachedMU.Lock()
+	s.mu.Lock()
 	s.isCached[key] = true
-	s.isCachedMU.Unlock()
+	s.mu.Unlock()
 	return nil
 }

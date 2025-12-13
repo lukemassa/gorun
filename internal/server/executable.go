@@ -22,7 +22,7 @@ type ExecutableContext struct {
 type BuildCache struct {
 	cacheDir    string
 	compiler    compiler
-	mu          sync.RWMutex
+	mu          sync.Mutex
 	executables map[string]*Executable
 }
 
@@ -34,7 +34,6 @@ type Executable struct {
 func NewBuildCache(cacheDir string, compiler compiler) *BuildCache {
 	return &BuildCache{
 		cacheDir:    cacheDir,
-		mu:          sync.RWMutex{},
 		compiler:    compiler,
 		executables: make(map[string]*Executable),
 	}
@@ -77,27 +76,33 @@ func (s *BuildCache) getExecutableFromContext(executableContext ExecutableContex
 	s.mu.Lock()
 	e, ok := s.executables[key]
 	if !ok {
-		e = &Executable{
-			buildBarrier: sync.Mutex{},
-		}
+		e = &Executable{}
 		s.executables[key] = e
 	}
 	s.mu.Unlock()
 
 	e.buildBarrier.Lock()
-	log.Info("inside build lock")
-	defer e.buildBarrier.Unlock()
 	if e.currentPath != "" {
+		e.buildBarrier.Unlock()
 		log.Infof("Path found %s in cache", e.currentPath)
 		return e.currentPath, nil
 	}
 	log.Infof("Must compile for %v", executableContext)
+	defer e.buildBarrier.Unlock()
 	newPath, err := s.compile(executableContext)
 	if err != nil {
 		return "", err
 	}
 	e.currentPath = newPath
 	return newPath, nil
+}
+
+func randomHex32() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("crypto/rand failed: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func (s *BuildCache) compile(executableContext ExecutableContext) (string, error) {
@@ -109,14 +114,12 @@ func (s *BuildCache) compile(executableContext ExecutableContext) (string, error
 	if err != nil {
 		return "", err
 	}
-
-	var randIdentifier []byte
-	_, err = rand.Read(randIdentifier)
+	filename, err := randomHex32()
 	if err != nil {
 		return "", err
 	}
 
-	newPath := filepath.Join(outputDir, hashBytes(randIdentifier))
+	newPath := filepath.Join(outputDir, filename)
 	err = s.compiler.compile(executableContext, newPath)
 	if err != nil {
 		return "", err
@@ -128,11 +131,18 @@ func (s *BuildCache) recompile(executableContext ExecutableContext) error {
 	key := executableContext.Key()
 	log.Infof("Re-compiling compilation for %+v (%s)", executableContext, key)
 	s.mu.Lock()
-	e := s.executables[key]
-	s.mu.Lock()
+	e, ok := s.executables[key]
+	s.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("attempted recompilation when there was no initial compile")
+	}
 
 	e.buildBarrier.Lock()
 	defer e.buildBarrier.Unlock()
-	_, err := s.compile(executableContext)
+	newPath, err := s.compile(executableContext)
+	if err != nil {
+		return err
+	}
+	e.currentPath = newPath
 	return err
 }

@@ -83,15 +83,14 @@ type blockingCompiler struct {
 	proceed chan struct{}
 }
 
-func (b *blockingCompiler) compile(e ExecutableContext, outputDir string) error {
+func (b *blockingCompiler) compile(e ExecutableContext, outputFile string) error {
 	// Signal that compile has started (and recompile already removed the file)
 	b.started <- struct{}{}
 
 	// Block until test allows us to continue
 	<-b.proceed
 
-	path := filepath.Join(outputDir, e.Key())
-	_, err := os.Create(path)
+	_, err := os.Create(outputFile)
 	return err
 }
 func TestReturnedPathRemainsUsableDuringRecompile(t *testing.T) {

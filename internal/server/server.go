@@ -12,12 +12,13 @@ import (
 	"time"
 
 	log "github.com/lukemassa/clilog"
+	"github.com/lukemassa/gorun/internal/build"
 )
 
 type Server struct {
 	sock  string
 	srv   *http.Server
-	cache *BuildCache
+	cache *build.Cache
 }
 
 type ExecutableRequest struct {
@@ -39,11 +40,11 @@ func (s *Server) handleExecutable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Infof("Requested translation of %s", req.MainPackage)
-	executableContext := ExecutableContext{
+	executableContext := build.Context{
 		MainPackage: req.MainPackage,
 		Directory:   valueFromEnv("PWD", req.Env),
 	}
-	newCommand, err := s.cache.getExecutableFromContext(executableContext)
+	newCommand, err := s.cache.GetExecutableFromContext(executableContext)
 	resp := ExecutableResponse{
 		Executable: newCommand,
 	}
@@ -71,11 +72,11 @@ func (s *Server) handleDeleteExecutable(w http.ResponseWriter, r *http.Request) 
 	}
 
 	log.Infof("Requested deletion of %s", req.MainPackage)
-	executableContext := ExecutableContext{
+	executableContext := build.Context{
 		MainPackage: req.MainPackage,
 		Directory:   valueFromEnv("PWD", req.Env),
 	}
-	err := s.cache.recompile(executableContext)
+	err := s.cache.Recompile(executableContext)
 	if err != nil {
 		w.WriteHeader(500)
 		fmt.Fprintf(w, "Failed to recompile: %v", err)
@@ -89,7 +90,7 @@ func NewServer(sock, cacheDir string) *Server {
 
 	s := &Server{
 		sock:  sock,
-		cache: NewBuildCache(cacheDir, &defaultCompiler{}),
+		cache: build.NewCache(cacheDir, &build.DefaultCompiler{}),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /command", s.handleExecutable)

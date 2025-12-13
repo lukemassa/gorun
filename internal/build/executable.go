@@ -1,4 +1,4 @@
-package server
+package build
 
 import (
 	"crypto/rand"
@@ -14,38 +14,38 @@ import (
 	log "github.com/lukemassa/clilog"
 )
 
-type ExecutableContext struct {
+type Context struct {
 	MainPackage string
 	Directory   string
 }
 
-type BuildCache struct {
+type Cache struct {
 	cacheDir    string
 	compiler    compiler
 	mu          sync.Mutex
-	executables map[string]*Executable
+	executables map[string]*executable
 }
 
-type Executable struct {
+type executable struct {
 	currentPath  string
 	buildBarrier sync.Mutex
 }
 
-func NewBuildCache(cacheDir string, compiler compiler) *BuildCache {
-	return &BuildCache{
+func NewCache(cacheDir string, compiler compiler) *Cache {
+	return &Cache{
 		cacheDir:    cacheDir,
 		compiler:    compiler,
-		executables: make(map[string]*Executable),
+		executables: make(map[string]*executable),
 	}
 }
 
 type compiler interface {
-	compile(e ExecutableContext, outputFile string) error
+	compile(e Context, outputFile string) error
 }
 
-type defaultCompiler struct{}
+type DefaultCompiler struct{}
 
-func (d *defaultCompiler) compile(executableContext ExecutableContext, outputFile string) error {
+func (d *DefaultCompiler) compile(executableContext Context, outputFile string) error {
 	cmd := exec.Command("go", "build", "-o", outputFile, executableContext.MainPackage)
 	cmd.Dir = executableContext.Directory
 	log.Infof("Running go build -o %s %s at %s", outputFile, executableContext.MainPackage, executableContext.Directory)
@@ -58,7 +58,7 @@ func (d *defaultCompiler) compile(executableContext ExecutableContext, outputFil
 	return nil
 }
 
-func (e ExecutableContext) Key() string {
+func (e Context) Key() string {
 	b := fmt.Appendf(nil, "%s\x00%s", e.MainPackage, e.Directory)
 	return hashBytes(b)
 }
@@ -69,14 +69,14 @@ func hashBytes(in []byte) string {
 	return hex.EncodeToString(b[:])
 }
 
-func (s *BuildCache) getExecutableFromContext(executableContext ExecutableContext) (string, error) {
+func (s *Cache) GetExecutableFromContext(executableContext Context) (string, error) {
 
 	key := executableContext.Key()
-	var e *Executable
+	var e *executable
 	s.mu.Lock()
 	e, ok := s.executables[key]
 	if !ok {
-		e = &Executable{}
+		e = &executable{}
 		s.executables[key] = e
 	}
 	s.mu.Unlock()
@@ -105,7 +105,7 @@ func randomHex32() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-func (s *BuildCache) compile(executableContext ExecutableContext) (string, error) {
+func (s *Cache) compile(executableContext Context) (string, error) {
 	key := executableContext.Key()
 
 	outputDir := filepath.Join(s.cacheDir, key)
@@ -127,7 +127,7 @@ func (s *BuildCache) compile(executableContext ExecutableContext) (string, error
 	return newPath, nil
 }
 
-func (s *BuildCache) recompile(executableContext ExecutableContext) error {
+func (s *Cache) Recompile(executableContext Context) error {
 	key := executableContext.Key()
 	log.Infof("Re-compiling compilation for %+v (%s)", executableContext, key)
 	s.mu.Lock()

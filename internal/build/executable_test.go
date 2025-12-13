@@ -1,4 +1,4 @@
-package server
+package build
 
 import (
 	"log"
@@ -23,9 +23,9 @@ func newMockCompiler() *mockCompiler {
 	}
 }
 
-func (m *mockCompiler) compile(e ExecutableContext, outputPath string) error {
+func (m *mockCompiler) compile(c Context, outputPath string) error {
 	log.Print("Doing a mock compile!")
-	key := e.Key()
+	key := c.Key()
 
 	// Simulates compilation, and panics if two compiles are called simultaneously
 	m.mu.Lock()
@@ -51,11 +51,11 @@ func (m *mockCompiler) compile(e ExecutableContext, outputPath string) error {
 func TestExecutableFromContext(t *testing.T) {
 	dir := t.TempDir()
 	compiler := newMockCompiler()
-	cache := NewBuildCache(dir, compiler)
+	cache := NewCache(dir, compiler)
 
-	e := ExecutableContext{}
-	key := e.Key()
-	executable, err := cache.getExecutableFromContext(e)
+	c := Context{}
+	key := c.Key()
+	executable, err := cache.GetExecutableFromContext(c)
 	assert.NoError(t, err)
 	assert.Equal(t, filepath.Join(dir, key), filepath.Dir(executable))
 	assert.FileExists(t, executable)
@@ -64,15 +64,15 @@ func TestExecutableFromContext(t *testing.T) {
 func TestPreventSimultaneousCompilation(t *testing.T) {
 	dir := t.TempDir()
 	compiler := newMockCompiler()
-	cache := NewBuildCache(dir, compiler)
+	cache := NewCache(dir, compiler)
 
-	e := ExecutableContext{}
+	c := Context{}
 
 	wg := sync.WaitGroup{}
 	// mock compiler should blow up if they are called simultaneously
 	for range 10 {
 		wg.Go(func() {
-			cache.getExecutableFromContext(e)
+			cache.GetExecutableFromContext(c)
 		})
 	}
 	wg.Wait()
@@ -83,7 +83,7 @@ type blockingCompiler struct {
 	proceed chan struct{}
 }
 
-func (b *blockingCompiler) compile(e ExecutableContext, outputFile string) error {
+func (b *blockingCompiler) compile(c Context, outputFile string) error {
 	// Signal that compile has started (and recompile already removed the file)
 	b.started <- struct{}{}
 
@@ -96,30 +96,30 @@ func (b *blockingCompiler) compile(e ExecutableContext, outputFile string) error
 func TestReturnedPathRemainsUsableDuringRecompile(t *testing.T) {
 	dir := t.TempDir()
 
-	c := &blockingCompiler{
+	compiler := &blockingCompiler{
 		started: make(chan struct{}, 1),
 		proceed: make(chan struct{}, 1),
 	}
 
-	cache := NewBuildCache(dir, c)
-	e := ExecutableContext{}
+	cache := NewCache(dir, compiler)
+	c := Context{}
 
 	// Allow the initial compile to finish
-	c.proceed <- struct{}{}
+	compiler.proceed <- struct{}{}
 
-	path, err := cache.getExecutableFromContext(e)
+	path, err := cache.GetExecutableFromContext(c)
 	assert.NoError(t, err)
 
 	// Drain the "started" signal from the initial compile
-	<-c.started
+	<-compiler.started
 
 	// Start a recompile AFTER the path is handed out
 	go func() {
-		_ = cache.recompile(e)
+		_ = cache.Recompile(c)
 	}()
 
 	// Wait until recompile has removed the file and is blocked in compile
-	<-c.started
+	<-compiler.started
 
 	// Invariant: the returned path should still be usable
 	assert.FileExists(t, path)

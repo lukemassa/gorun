@@ -1,5 +1,3 @@
 - Implement start|stop for debug run
 - Allow for kicking off the daemon on runs
 - Server listen to file changes and trigger rebuild
-- Fix bug where recompile deletes executable out from under command
-- Split execution code into own package

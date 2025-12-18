@@ -24,7 +24,8 @@ func main() {
 		s.Run()
 		return
 	}
-	daemon := server.NewDaemon(s)
+	runner := server.NewOSProcessController(os.Args[0], "run")
+	daemon := server.NewDaemon(s, runner)
 	var err error
 	switch cmd {
 	case "start":

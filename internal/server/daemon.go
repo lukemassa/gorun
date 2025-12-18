@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,12 +16,77 @@ import (
 )
 
 type Daemon struct {
-	server *Server
+	server            *Server
+	processController ProcessController
 }
 
-func NewDaemon(s *Server) *Daemon {
+type ProcessController interface {
+	Start(logFile io.Writer) (pid int, err error)
+	Stop(pid int) error
+	Alive(pid int) bool
+}
+
+type OSProcessController struct {
+	cmd  string
+	args []string
+}
+
+func NewOSProcessController(cmd string, args ...string) OSProcessController {
+	return OSProcessController{
+		cmd:  cmd,
+		args: args,
+	}
+}
+
+func (o OSProcessController) Start(log io.Writer) (int, error) {
+	cmd := exec.Command(o.cmd, o.args...)
+	cmd.Stdout = log
+	cmd.Stderr = log
+	err := cmd.Start()
+	if err != nil {
+		return 0, err
+	}
+	return cmd.Process.Pid, nil
+}
+
+func (o OSProcessController) Stop(pid int) error {
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	// TODO: Can I check here to make sure this at least vaguely looks like the command we want it to be?
+	err = process.Signal(syscall.SIGTERM)
+	if err != nil {
+		return err
+	}
+	for range 50 {
+		if !o.Alive(pid) {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	log.Warnf("Could not kill %d with with term, sending kill", pid)
+
+	err = process.Signal(syscall.SIGKILL)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (o OSProcessController) Alive(pid int) bool {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	// POSIX: signal 0 checks existence
+	return p.Signal(syscall.Signal(0)) == nil
+}
+
+func NewDaemon(s *Server, processController ProcessController) *Daemon {
 	return &Daemon{
-		server: s,
+		server:            s,
+		processController: processController,
 	}
 }
 
@@ -59,15 +125,6 @@ func (d *Daemon) savePid(pid int) error {
 	return err
 }
 
-func pidAlive(pid int) bool {
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	// POSIX: signal 0 checks existence
-	return p.Signal(syscall.Signal(0)) == nil
-}
-
 func (d *Daemon) deletePid() error {
 	return os.Remove(d.pidFile())
 }
@@ -77,12 +134,8 @@ func (d *Daemon) Start() error {
 	if err != nil {
 		return err
 	}
-	if pid != 0 && pidAlive(pid) {
+	if pid != 0 && d.processController.Alive(pid) {
 		return fmt.Errorf("daemon already running pid %d", pid)
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
 	}
 
 	gorunLog, err := os.Create(d.logFile())
@@ -91,46 +144,15 @@ func (d *Daemon) Start() error {
 	}
 	defer gorunLog.Close()
 
-	cmd := exec.Command(exe, "run")
-
-	cmd.Stdout = gorunLog
-	cmd.Stderr = gorunLog
-
-	err = cmd.Start()
+	pid, err = d.processController.Start(gorunLog)
 	if err != nil {
 		return err
 	}
-	err = d.savePid(cmd.Process.Pid)
+	err = d.savePid(pid)
 	if err != nil {
 		return err
 	}
-	log.Infof("Started process %d", cmd.Process.Pid)
-	return nil
-}
-
-func (d *Daemon) kill(pid int) error {
-	process, err := os.FindProcess(pid)
-	if err != nil {
-		return err
-	}
-	// TODO: Can I check here to make sure this at least vaguely looks like the command we want it to be?
-
-	err = process.Signal(syscall.SIGTERM)
-	if err != nil {
-		return err
-	}
-	for range 50 {
-		if !pidAlive(pid) {
-			return nil
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	log.Warnf("Could not kill %d with with term, sending kill", pid)
-
-	err = process.Signal(syscall.SIGKILL)
-	if err != nil {
-		return err
-	}
+	log.Infof("Started process %d", pid)
 	return nil
 }
 
@@ -143,7 +165,7 @@ func (d *Daemon) Stop() error {
 		return errors.New("no pid found")
 	}
 
-	err = d.kill(pid)
+	err = d.processController.Stop(pid)
 	if err != nil {
 		return err
 	}

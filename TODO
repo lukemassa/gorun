@@ -1,4 +1,3 @@
 - Allow for kicking off the daemon on runs
 - Server listen to file changes and trigger rebuild
 - Get rid of Config somehow
-- Add testing for daemon

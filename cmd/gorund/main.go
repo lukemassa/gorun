@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/lukemassa/gorun/internal/config"
@@ -17,11 +18,23 @@ func main() {
 	if len(os.Args) != 2 {
 		usage()
 	}
-	server := server.NewServer(config.DefaultSock(), config.CacheDir())
-	switch os.Args[1] {
-	case "run":
-		server.Run()
+	s := server.NewServer(config.DefaultSock(), config.CacheDir())
+	cmd := os.Args[1]
+	if cmd == "run" {
+		s.Run()
+		return
+	}
+	daemon := server.NewDaemon(s)
+	var err error
+	switch cmd {
+	case "start":
+		err = daemon.Start()
+	case "stop":
+		err = daemon.Stop()
 	default:
 		usage()
+	}
+	if err != nil {
+		log.Fatal(err)
 	}
 }

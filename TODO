@@ -1,4 +1,4 @@
-- Implement start|stop for debug run
 - Allow for kicking off the daemon on runs
 - Server listen to file changes and trigger rebuild
 - Consolidate cachedir and pid file into one var
+- Add testing for daemon

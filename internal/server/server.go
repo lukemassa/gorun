@@ -147,7 +147,7 @@ func (s *Server) Start() (stop func(), err error) {
 }
 
 func valueFromEnv(key string, env []string) string {
-	for i := 0; i < len(env); i++ {
+	for i := range env {
 		if strings.HasPrefix(env[i], key+"=") {
 			return env[i][len(key)+1:]
 		}

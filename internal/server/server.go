@@ -16,9 +16,10 @@ import (
 )
 
 type Server struct {
-	sock  string
-	srv   *http.Server
-	cache *build.Cache
+	sock     string
+	srv      *http.Server
+	cache    *build.Cache
+	cacheDir string
 }
 
 type ExecutableRequest struct {
@@ -89,8 +90,9 @@ func (s *Server) handleDeleteExecutable(w http.ResponseWriter, r *http.Request) 
 func NewServer(sock, cacheDir string) *Server {
 
 	s := &Server{
-		sock:  sock,
-		cache: build.NewCache(cacheDir, &build.DefaultCompiler{}),
+		sock:     sock,
+		cache:    build.NewCache(cacheDir, &build.DefaultCompiler{}),
+		cacheDir: cacheDir,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /command", s.handleExecutable)

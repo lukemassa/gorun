@@ -10,9 +10,9 @@ import (
 )
 
 func main() {
-	sock := os.Getenv("GORUN_SOCKET")
-	if sock == "" {
-		sock = config.DefaultSock()
+	workingDir := os.Getenv("GORUN_WORKING_DIR")
+	if workingDir == "" {
+		workingDir = config.WorkingDir()
 	}
 
 	if os.Getenv("GORUN_DEBUG") != "" {
@@ -23,7 +23,7 @@ func main() {
 	if os.Getenv("GORUN_DELETE") != "" {
 		verb = "delete"
 	}
-	client := client.NewClient(sock)
+	client := client.NewClient(workingDir)
 
 	env := os.Environ()
 	if len(os.Args) < 2 {

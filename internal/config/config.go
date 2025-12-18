@@ -6,7 +6,7 @@ import (
 )
 
 // TODO: Don't panic
-func CacheDir() string {
+func WorkingDir() string {
 	userCacheDir, err := os.UserCacheDir()
 	if err != nil {
 		panic(err)
@@ -19,7 +19,6 @@ func CacheDir() string {
 	return cacheDir
 }
 
-// TODO: Don't panic
-func DefaultSock() string {
-	return filepath.Join(CacheDir(), "gorun.sock")
+func Sock(workingDir string) string {
+	return filepath.Join(workingDir, "gorun.sock")
 }

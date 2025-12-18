@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	log "github.com/lukemassa/clilog"
+	"github.com/lukemassa/gorun/internal/config"
 	"github.com/lukemassa/gorun/internal/server"
 )
 
@@ -17,8 +18,9 @@ type Client struct {
 	httpClient *http.Client
 }
 
-func NewClient(sock string) *Client {
+func NewClient(workingDir string) *Client {
 
+	sock := config.Sock(workingDir)
 	tr := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			// ignore "network" and "addr" from HTTP; always dial the socket

@@ -16,8 +16,8 @@ import (
 )
 
 var (
-	cliPath    string
-	socketPath string
+	cliPath         string
+	gorunWorkingDir string
 )
 
 func TestMain(m *testing.M) {
@@ -36,9 +36,9 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "failed to build test binary: %s\n%s", err, out)
 		os.Exit(1)
 	}
+	gorunWorkingDir = dir
 
-	socketPath = filepath.Join(dir, "socket")
-	server := server.NewServer(socketPath, dir)
+	server := server.NewServer(dir)
 	cancel, err := server.Start()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to startz test server: %s\n%s", err, out)
@@ -68,7 +68,7 @@ func runCLI(t *testing.T, workingDir string, args ...string) RunResult {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	cmd.Dir = workingDir
-	cmd.Env = append(cmd.Env, fmt.Sprintf("GORUN_SOCKET=%s", socketPath))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("GORUN_WORKING_DIR=%s", gorunWorkingDir))
 	cmd.Env = append(cmd.Env, fmt.Sprintf("PWD=%s", workingDir))
 	cmd.Env = append(cmd.Env, "GORUN_DEBUG=1")
 

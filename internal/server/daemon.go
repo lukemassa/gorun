@@ -25,12 +25,12 @@ func NewDaemon(s *Server) *Daemon {
 }
 
 func (d *Daemon) pidFile() string {
-	return filepath.Join(d.server.cacheDir, "gorun.pid")
+	return filepath.Join(d.server.workingDir, "gorun.pid")
 }
 
 func (d *Daemon) logFile() string {
 	// TODO: Do not overwrite the log file on every run
-	return filepath.Join(d.server.cacheDir, "gorun.log")
+	return filepath.Join(d.server.workingDir, "gorun.log")
 }
 
 func (d *Daemon) currentPid() (int, error) {

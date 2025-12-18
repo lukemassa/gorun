@@ -13,13 +13,13 @@ import (
 
 	log "github.com/lukemassa/clilog"
 	"github.com/lukemassa/gorun/internal/build"
+	"github.com/lukemassa/gorun/internal/config"
 )
 
 type Server struct {
-	sock     string
-	srv      *http.Server
-	cache    *build.Cache
-	cacheDir string
+	srv        *http.Server
+	cache      *build.Cache
+	workingDir string
 }
 
 type ExecutableRequest struct {
@@ -30,6 +30,10 @@ type ExecutableRequest struct {
 type ExecutableResponse struct {
 	Executable        string
 	CompilationOutput string
+}
+
+func (s *Server) sock() string {
+	return config.Sock(s.workingDir)
 }
 
 func (s *Server) handleExecutable(w http.ResponseWriter, r *http.Request) {
@@ -87,12 +91,11 @@ func (s *Server) handleDeleteExecutable(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, "Recompiled %+v", executableContext)
 }
 
-func NewServer(sock, cacheDir string) *Server {
+func NewServer(workingDir string) *Server {
 
 	s := &Server{
-		sock:     sock,
-		cache:    build.NewCache(cacheDir, &build.DefaultCompiler{}),
-		cacheDir: cacheDir,
+		cache:      build.NewCache(workingDir, &build.DefaultCompiler{}),
+		workingDir: workingDir,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /command", s.handleExecutable)
@@ -113,15 +116,15 @@ func (s *Server) Run() {
 
 func (s *Server) serve() (err error) {
 
-	_ = os.Remove(s.sock)
+	_ = os.Remove(s.sock())
 
-	l, err := net.Listen("unix", s.sock)
+	l, err := net.Listen("unix", s.sock())
 	if err != nil {
 		return err
 	}
 	defer l.Close()
 
-	log.Infof("Starting server at %s", s.sock)
+	log.Infof("Starting server at %s", s.sock())
 
 	err = s.srv.Serve(l)
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -139,7 +142,7 @@ func (s *Server) Start() (stop func(), err error) {
 	}
 
 	for range 100 {
-		if conn, err := net.Dial("unix", s.sock); err == nil {
+		if conn, err := net.Dial("unix", s.sock()); err == nil {
 			conn.Close()
 			return stopFn, nil
 		}

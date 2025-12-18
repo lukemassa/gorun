@@ -18,7 +18,7 @@ func main() {
 	if len(os.Args) != 2 {
 		usage()
 	}
-	s := server.NewServer(config.DefaultSock(), config.CacheDir())
+	s := server.NewServer(config.WorkingDir())
 	cmd := os.Args[1]
 	if cmd == "run" {
 		s.Run()
